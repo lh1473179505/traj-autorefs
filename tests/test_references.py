@@ -511,3 +511,96 @@ def test_title_append_identifier() -> None:
         source='<autoref optional identifier="fully.qualified.name">name</autoref>',
         output='<p><a class="autorefs autorefs-internal" title="Qualified Name (fully.qualified.name)" href="ok.html#fully.qualified.name">name</a></p>',
     )
+
+
+def test_backlink_recorded_under_slug_when_only_slug_resolves() -> None:
+    """When only the slug resolves, backlink should be recorded under the slug identifier."""
+    url_map = {"real-target": "target.html#real-target"}
+    backlinks_recorded: list[tuple[str, str, str]] = []
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        backlinks_recorded.append((identifier, backlink_type, backlink_anchor))
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        from mkdocs_autorefs import relative_url
+
+        return relative_url("page.html", url_map[identifier]), None
+
+    html = (
+        '<autoref identifier="Missing Title" slug="real-target" '
+        'backlink-type="referenced-by" backlink-anchor="usage">Missing Title</autoref>'
+    )
+    fixed_html, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink, _legacy_refs=False)
+    assert "href=" in fixed_html
+    assert len(backlinks_recorded) == 1
+    assert backlinks_recorded[0] == ("real-target", "referenced-by", "usage")
+    assert unmapped == []
+
+
+def test_backlink_recorded_under_identifier_when_identifier_resolves() -> None:
+    """When the identifier resolves directly, backlink should still use the original identifier."""
+    url_map = {"my.module.MyClass": "api.html#my.module.MyClass"}
+    backlinks_recorded: list[tuple[str, str, str]] = []
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        backlinks_recorded.append((identifier, backlink_type, backlink_anchor))
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        from mkdocs_autorefs import relative_url
+
+        return relative_url("page.html", url_map[identifier]), None
+
+    html = (
+        '<autoref identifier="my.module.MyClass" '
+        'backlink-type="defined-in" backlink-anchor="section1">MyClass</autoref>'
+    )
+    fixed_html, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink, _legacy_refs=False)
+    assert "href=" in fixed_html
+    assert len(backlinks_recorded) == 1
+    assert backlinks_recorded[0] == ("my.module.MyClass", "defined-in", "section1")
+    assert unmapped == []
+
+
+def test_unmapped_uses_original_identifier_when_unresolved() -> None:
+    """When no candidate resolves, unmapped should contain the original identifier."""
+    backlinks_recorded: list[tuple[str, str, str]] = []
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        backlinks_recorded.append((identifier, backlink_type, backlink_anchor))
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    html = (
+        '<autoref identifier="Missing Title" slug="also-missing" '
+        'backlink-type="referenced-by" backlink-anchor="usage">Missing Title</autoref>'
+    )
+    fixed_html, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink, _legacy_refs=False)
+    # Backlink should NOT be recorded since resolution failed
+    assert backlinks_recorded == []
+    # Unmapped should contain the original identifier
+    assert len(unmapped) == 1
+    assert unmapped[0][0] == "Missing Title"
+
+
+def test_optional_unresolved_does_not_record_backlink() -> None:
+    """Optional unresolved references should not record backlinks."""
+    backlinks_recorded: list[tuple[str, str, str]] = []
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        backlinks_recorded.append((identifier, backlink_type, backlink_anchor))
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    html = (
+        '<autoref optional identifier="Missing Title" slug="also-missing" '
+        'backlink-type="referenced-by" backlink-anchor="usage">Missing Title</autoref>'
+    )
+    fixed_html, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink, _legacy_refs=False)
+    # Backlink should NOT be recorded for optional unresolved
+    assert backlinks_recorded == []
+    # Optional refs don't go into unmapped
+    assert unmapped == []
+    # Should render as a span with title
+    assert '<span title="Missing Title">' in fixed_html
