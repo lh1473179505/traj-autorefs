@@ -511,3 +511,87 @@ def test_title_append_identifier() -> None:
         source='<autoref optional identifier="fully.qualified.name">name</autoref>',
         output='<p><a class="autorefs autorefs-internal" title="Qualified Name (fully.qualified.name)" href="ok.html#fully.qualified.name">name</a></p>',
     )
+
+
+def test_nested_alias_anchor_in_inline_container() -> None:
+    """Check that an alias anchor nested in an inline element (span) aliases to the next heading."""
+    from xml.etree.ElementTree import Element, SubElement
+
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+
+    from mkdocs_autorefs._internal.references import AnchorScannerTreeProcessor
+
+    processor = AnchorScannerTreeProcessor(plugin)
+
+    # Build: <div><p><span><a id="old-name"></a></span></p><h2 id="new-name">New Name</h2></div>
+    root = Element("div")
+    p = SubElement(root, "p")
+    span = SubElement(p, "span")
+    a = SubElement(span, "a")
+    a.set("id", "old-name")
+    h2 = SubElement(root, "h2")
+    h2.set("id", "new-name")
+    h2.text = "New Name"
+
+    processor.run(root)
+
+    # old-name should be registered as primary and alias to new-name
+    assert "old-name" in plugin._primary_url_map
+    assert plugin._primary_url_map["old-name"] == ["page#new-name"]
+
+
+def test_nested_anchor_with_visible_text_no_alias() -> None:
+    """Check that an anchor inside an inline element with visible text does not alias to the next heading."""
+    from xml.etree.ElementTree import Element, SubElement
+
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+
+    from mkdocs_autorefs._internal.references import AnchorScannerTreeProcessor
+
+    processor = AnchorScannerTreeProcessor(plugin)
+
+    # Build: <div><p><span>Visible<a id="anchor-id"></a></span></p><h2 id="heading-id">Heading</h2></div>
+    root = Element("div")
+    p = SubElement(root, "p")
+    span = SubElement(p, "span")
+    span.text = "Visible"
+    a = SubElement(span, "a")
+    a.set("id", "anchor-id")
+    h2 = SubElement(root, "h2")
+    h2.set("id", "heading-id")
+    h2.text = "Heading"
+
+    processor.run(root)
+
+    # anchor-id should be registered but NOT aliased to heading-id
+    assert "anchor-id" in plugin._primary_url_map
+    assert plugin._primary_url_map["anchor-id"] == ["page#anchor-id"]
+
+
+def test_recursive_scan_block_element_headings() -> None:
+    """Check that headings inside block elements are still scanned and aliases work within them."""
+    from xml.etree.ElementTree import Element, SubElement
+
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+
+    from mkdocs_autorefs._internal.references import AnchorScannerTreeProcessor
+
+    processor = AnchorScannerTreeProcessor(plugin)
+
+    # Build: <div><div><a id="inside-alias"></a><h2 id="inside-heading">Inside</h2></div></div>
+    root = Element("div")
+    inner_div = SubElement(root, "div")
+    a = SubElement(inner_div, "a")
+    a.set("id", "inside-alias")
+    h2 = SubElement(inner_div, "h2")
+    h2.set("id", "inside-heading")
+    h2.text = "Inside"
+
+    processor.run(root)
+
+    # inside-alias should be aliased to inside-heading within the block
+    assert "inside-alias" in plugin._primary_url_map
+    assert plugin._primary_url_map["inside-alias"] == ["page#inside-heading"]

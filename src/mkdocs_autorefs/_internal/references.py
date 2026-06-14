@@ -230,6 +230,11 @@ class AnchorScannerTreeProcessor(Treeprocessor):
     """The name of the tree processor."""
 
     _htags: ClassVar[set[str]] = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    _inline_tags: ClassVar[set[str]] = {
+        "span", "em", "strong", "b", "i", "u", "s", "code",
+        "mark", "small", "sub", "sup", "abbr", "cite",
+        "del", "ins", "kbd", "var", "q", "dfn",
+    }
 
     def __init__(self, plugin: AutorefsPlugin, md: Markdown | None = None) -> None:
         """Initialize the tree processor.
@@ -275,11 +280,27 @@ class AnchorScannerTreeProcessor(Treeprocessor):
                 last_heading = el.text
                 pending_anchors.flush(el.get("id"), title=last_heading)
 
+            elif el.tag in self._inline_tags:
+                # Inline container (e.g. <span>, <em>): recurse into it
+                # keeping the same pending anchors context, unless it has
+                # visible text or an href that breaks the alias chain.
+                if (el.text and el.text.strip()) or el.get("href"):
+                    pending_anchors.flush(title=last_heading)
+                    inner_pending = _PendingAnchors(self._plugin)
+                    self._scan_anchors(el, inner_pending, last_heading)
+                    inner_pending.flush(title=last_heading)
+                else:
+                    self._scan_anchors(el, pending_anchors, last_heading)
+                # Non-whitespace tail text after the element interrupts the chain.
+                if el.tail and el.tail.strip():
+                    pending_anchors.flush(title=last_heading)
+
             else:
-                # But if it's some other interruption, flush anchors anyway as non-aliases.
+                # Block element: flush pending anchors and recurse with a new context.
                 pending_anchors.flush(title=last_heading)
-                # Recurse into sub-elements, in a *separate* context.
-                self.run(el)
+                inner_pending = _PendingAnchors(self._plugin)
+                self._scan_anchors(el, inner_pending, last_heading)
+                inner_pending.flush()
 
 
 class HeadingScannerTreeProcessor(Treeprocessor):
