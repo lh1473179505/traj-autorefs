@@ -230,6 +230,11 @@ class AnchorScannerTreeProcessor(Treeprocessor):
     """The name of the tree processor."""
 
     _htags: ClassVar[set[str]] = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    _inline_tags: ClassVar[set[str]] = {
+        "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn",
+        "em", "i", "img", "kbd", "mark", "q", "rp", "rt", "ruby", "s",
+        "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "wbr",
+    }
 
     def __init__(self, plugin: AutorefsPlugin, md: Markdown | None = None) -> None:
         """Initialize the tree processor.
@@ -275,10 +280,20 @@ class AnchorScannerTreeProcessor(Treeprocessor):
                 last_heading = el.text
                 pending_anchors.flush(el.get("id"), title=last_heading)
 
+            elif el.tag in self._inline_tags:
+                # Inline elements are transparent: recurse with the same pending anchors context.
+                # Visible text before any child element interrupts the alias chain.
+                if el.text and el.text.strip():
+                    pending_anchors.flush(title=last_heading)
+                self._scan_anchors(el, pending_anchors, last_heading)
+                # Non-whitespace text after the element interrupts the chain.
+                if el.tail and el.tail.strip():
+                    pending_anchors.flush(title=last_heading)
+
             else:
-                # But if it's some other interruption, flush anchors anyway as non-aliases.
+                # Block elements are a boundary: flush anchors as non-aliases,
+                # then recurse into sub-elements in a *separate* context.
                 pending_anchors.flush(title=last_heading)
-                # Recurse into sub-elements, in a *separate* context.
                 self.run(el)
 
 

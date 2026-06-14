@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, Any
 import markdown
 import pytest
 
-from mkdocs_autorefs import AutorefsExtension, AutorefsHookInterface, AutorefsPlugin, fix_refs, relative_url
+from xml.etree.ElementTree import Element, SubElement
+
+from mkdocs_autorefs import AnchorScannerTreeProcessor, AutorefsExtension, AutorefsHookInterface, AutorefsPlugin, fix_refs, relative_url
 from tests.helpers import create_page
 
 if TYPE_CHECKING:
@@ -511,3 +513,67 @@ def test_title_append_identifier() -> None:
         source='<autoref optional identifier="fully.qualified.name">name</autoref>',
         output='<p><a class="autorefs autorefs-internal" title="Qualified Name (fully.qualified.name)" href="ok.html#fully.qualified.name">name</a></p>',
     )
+
+
+def test_nested_alias_anchor_in_span_aliases_to_heading() -> None:
+    """Alias anchor nested inside a span before a heading should alias to that heading."""
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+    scanner = AnchorScannerTreeProcessor(plugin)
+
+    root = Element("div")
+    p = SubElement(root, "p")
+    span = SubElement(p, "span")
+    a = SubElement(span, "a")
+    a.set("id", "old-name")
+    h2 = SubElement(root, "h2")
+    h2.set("id", "new-name")
+    h2.text = "New Name"
+
+    scanner.run(root)
+
+    # old-name should be registered as a primary anchor aliasing to new-name.
+    assert plugin._primary_url_map["old-name"] == ["page#new-name"]
+
+
+def test_nested_anchor_followed_by_visible_text_does_not_alias() -> None:
+    """Anchor nested inside a span followed by visible text should NOT alias to the next heading."""
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+    scanner = AnchorScannerTreeProcessor(plugin)
+
+    root = Element("div")
+    p = SubElement(root, "p")
+    span = SubElement(p, "span")
+    a = SubElement(span, "a")
+    a.set("id", "not-alias")
+    a.tail = "visible text"
+    h2 = SubElement(root, "h2")
+    h2.set("id", "heading")
+    h2.text = "Heading"
+
+    scanner.run(root)
+
+    # not-alias should map to itself (flushed due to visible text), not aliased to heading.
+    assert plugin._primary_url_map["not-alias"] == ["page#not-alias"]
+
+
+def test_recurse_into_block_element_finds_heading() -> None:
+    """Recursing into an unrelated block element should still find headings and aliases inside it."""
+    plugin = AutorefsPlugin()
+    plugin.current_page = create_page("page")
+    scanner = AnchorScannerTreeProcessor(plugin)
+
+    root = Element("div")
+    # An unrelated block element containing an anchor + heading pair.
+    block = SubElement(root, "div")
+    a = SubElement(block, "a")
+    a.set("id", "inner-alias")
+    h2 = SubElement(block, "h2")
+    h2.set("id", "inner-heading")
+    h2.text = "Inner Heading"
+
+    scanner.run(root)
+
+    # The scanner should have recursed into the block and aliased inner-alias to inner-heading.
+    assert plugin._primary_url_map["inner-alias"] == ["page#inner-heading"]
