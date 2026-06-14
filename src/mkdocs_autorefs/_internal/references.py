@@ -493,7 +493,9 @@ def relative_url(url_a: str, url_b: str) -> str:
     levels = len(parts_a) - 1
     parts_relative = [".."] * levels + parts_b
     relative = "/".join(parts_relative)
-    return f"{relative}#{anchor}"
+    if rest:
+        return f"{relative}#{anchor}"
+    return relative
 
 
 def fix_ref(

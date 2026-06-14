@@ -10,7 +10,7 @@ from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.theme import Theme
 
 from mkdocs_autorefs import AutorefsConfig, AutorefsPlugin, fix_refs
-from tests.helpers import create_page
+from tests.helpers import create_anchor_link, create_page
 
 
 def test_url_registration() -> None:
@@ -216,3 +216,87 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+def test_backlink_with_empty_anchor_points_to_page_breadcrumb() -> None:
+    """Check that a backlink with an empty anchor resolves to the page-level breadcrumb."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.record_backlinks = True
+
+    source_page = create_page("source")
+    target_page = create_page("target")
+
+    # Register identifier on the target page so it exists in _primary_url_map.
+    plugin.register_anchor(identifier="my-ident", page=target_page, primary=True)
+
+    # Register a page-level breadcrumb for the source page (what the backlink points to).
+    plugin._get_breadcrumb(source_page)
+
+    # Record a backlink with an empty anchor: should store source_page.url, not source_page.url + "#".
+    plugin._record_backlink(
+        identifier="my-ident",
+        backlink_type="referenced-by",
+        backlink_anchor="",
+        page_url=source_page.url,
+    )
+
+    # get_backlinks should return a backlink whose crumb points to the source page.
+    backlinks = plugin.get_backlinks("my-ident", from_url=target_page.url)
+    assert "referenced-by" in backlinks
+    assert len(backlinks["referenced-by"]) == 1
+    backlink = next(iter(backlinks["referenced-by"]))
+    assert any(crumb.url == source_page.url for crumb in backlink.crumbs)
+
+
+def test_backlink_with_nonempty_anchor_points_to_heading_breadcrumb() -> None:
+    """Check that a backlink with a non-empty anchor resolves to the heading breadcrumb."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.record_backlinks = True
+
+    source_page = create_page("source")
+    target_page = create_page("target")
+
+    # Register identifier on the target page.
+    plugin.register_anchor(identifier="my-ident", page=target_page, primary=True)
+
+    # Register a heading-level breadcrumb on the source page.
+    heading = create_anchor_link(title="My Heading", anchor_id="my-heading", level=2)
+    plugin._register_breadcrumbs(source_page, heading)
+
+    # Record a backlink with a non-empty anchor.
+    plugin._record_backlink(
+        identifier="my-ident",
+        backlink_type="referenced-by",
+        backlink_anchor="my-heading",
+        page_url=source_page.url,
+    )
+
+    backlinks = plugin.get_backlinks("my-ident", from_url=target_page.url)
+    assert "referenced-by" in backlinks
+    assert len(backlinks["referenced-by"]) == 1
+    backlink = next(iter(backlinks["referenced-by"]))
+    # The deepest crumb should point to the heading anchor.
+    assert any(crumb.url and "#my-heading" in crumb.url for crumb in backlink.crumbs)
+
+
+def test_external_identifier_does_not_record_backlink() -> None:
+    """Check that backlinks are not recorded for external (absolute URL) identifiers."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.record_backlinks = True
+
+    # Register an external identifier via register_url (goes to _abs_url_map only).
+    plugin.register_url(identifier="ext-ident", url="https://example.com/page#ext-ident")
+
+    # Attempt to record a backlink for the external identifier.
+    plugin._record_backlink(
+        identifier="ext-ident",
+        backlink_type="referenced-by",
+        backlink_anchor="some-heading",
+        page_url="source/",
+    )
+
+    # No backlinks should be recorded since ext-ident is not in primary/secondary maps.
+    assert plugin._backlinks == {} or "ext-ident" not in plugin._backlinks
