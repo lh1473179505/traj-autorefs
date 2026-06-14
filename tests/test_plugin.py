@@ -216,3 +216,67 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+def test_fallback_uses_closest_url() -> None:
+    """Check that fallback alias resolution uses resolve_closest with the original from_url."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.resolve_closest = True
+
+    # Register the real identifier on two pages.
+    plugin.register_anchor(identifier="real.target", page=create_page("api/overview.html"), primary=True)
+    plugin.register_anchor(identifier="real.target", page=create_page("guide/deep/page.html"), primary=True)
+
+    # Fallback maps the alias to the real identifier.
+    def fallback(name: str) -> tuple[str, ...]:
+        if name == "MyAlias":
+            return ("real.target",)
+        return ()
+
+    # Resolve from a page close to guide/deep/page.html.
+    url, _ = plugin.get_item_url("MyAlias", from_url="guide/current/", fallback=fallback)
+
+    # Should resolve to the closest URL (guide/deep/page.html#real.target), not the first (api/overview.html).
+    assert "guide/deep/page.html" in url or "deep/page.html" in url
+    assert "api/overview.html" not in url
+
+
+def test_fallback_caches_closest_url() -> None:
+    """Check that fallback caches the resolved closest URL for subsequent lookups."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.resolve_closest = True
+
+    plugin.register_anchor(identifier="real.id", page=create_page("a/far.html"), primary=True)
+    plugin.register_anchor(identifier="real.id", page=create_page("guide/near.html"), primary=True)
+
+    def fallback(name: str) -> tuple[str, ...]:
+        if name == "CachedAlias":
+            return ("real.id",)
+        return ()
+
+    # First call triggers fallback and caches the result.
+    plugin.get_item_url("CachedAlias", from_url="guide/current/", fallback=fallback)
+
+    # Verify that the alias was cached with the closest URL.
+    assert "CachedAlias" in plugin._secondary_url_map
+    cached_urls = plugin._secondary_url_map["CachedAlias"]
+    assert len(cached_urls) == 1
+    assert "guide/near.html#real.id" in cached_urls[0]
+
+
+def test_fallback_missing_raises_keyerror() -> None:
+    """Check that a fallback returning unknown identifiers still raises KeyError."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.resolve_closest = True
+
+    def fallback(name: str) -> tuple[str, ...]:
+        return ("nonexistent.id",)
+
+    with pytest.raises(KeyError):
+        plugin.get_item_url("UnknownAlias", from_url="guide/current/", fallback=fallback)
+
+    with pytest.raises(KeyError):
+        plugin.get_item_url("UnknownAlias", from_url="guide/current/", fallback=lambda _: ())
