@@ -516,7 +516,7 @@ class AutorefsPlugin(BasePlugin[AutorefsConfig]):
                 new_identifiers = fallback(identifier)
                 for new_identifier in new_identifiers:
                     with contextlib.suppress(KeyError):
-                        url = self._get_item_url(new_identifier)
+                        url = self._get_item_url(new_identifier, from_url=from_url)
                         self._secondary_url_map[identifier] = [url]
                         return url
             raise

@@ -216,3 +216,50 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+# YORE: Bump 2: Remove block.
+def test_fallback_alias_resolves_closest_url() -> None:
+    """Fallback aliases should use resolve_closest with the original from_url."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.resolve_closest = True
+    # Register the same real identifier on two different pages.
+    plugin.register_anchor(identifier="real-id", page=create_page("guide/page-a.html"), primary=True)
+    plugin.register_anchor(identifier="real-id", page=create_page("api/page-b.html"), primary=True)
+
+    # Use a fallback from an alias to the real identifier.
+    # From "guide/current/", the closest URL should be "guide/page-a.html#real-id".
+    url, _title = plugin.get_item_url("alias-id", from_url="guide/current/", fallback=lambda _: ("real-id",))
+    assert url == "../page-a.html#real-id"
+
+
+# YORE: Bump 2: Remove block.
+def test_fallback_alias_cache_stores_selected_url() -> None:
+    """After fallback resolution, the alias cache should store the selected (closest) URL."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    plugin.config.resolve_closest = True
+    plugin.register_anchor(identifier="real-id", page=create_page("guide/page-a.html"), primary=True)
+    plugin.register_anchor(identifier="real-id", page=create_page("api/page-b.html"), primary=True)
+
+    # First call triggers fallback resolution and caches the result.
+    url1, _ = plugin.get_item_url("alias-id", from_url="guide/current/", fallback=lambda _: ("real-id",))
+    # The alias is now cached in _secondary_url_map with the selected URL.
+    assert "alias-id" in plugin._secondary_url_map
+    assert plugin._secondary_url_map["alias-id"] == ["guide/page-a.html#real-id"]
+
+    # Second call uses the cache directly (no fallback needed).
+    url2, _ = plugin.get_item_url("alias-id", from_url="guide/current/")
+    assert url1 == url2
+
+
+# YORE: Bump 2: Remove block.
+def test_fallback_missing_identifier_raises_keyerror() -> None:
+    """When fallback returns no valid identifiers, KeyError is raised."""
+    plugin = AutorefsPlugin()
+    plugin.config = AutorefsConfig()
+    with pytest.raises(KeyError):
+        plugin.get_item_url("unknown", fallback=lambda _: ("nonexistent",))
+    with pytest.raises(KeyError):
+        plugin.get_item_url("unknown", fallback=lambda _: ())
