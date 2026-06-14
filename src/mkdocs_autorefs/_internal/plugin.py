@@ -446,7 +446,7 @@ class AutorefsPlugin(BasePlugin[AutorefsConfig]):
                 url_map[identifier].append(url)
         else:
             url_map[identifier] = [url]
-        if title and url not in self._title_map:
+        if title and not self._title_map.get(url):
             self._title_map[url] = title
 
     def register_url(self, identifier: str, url: str) -> None:

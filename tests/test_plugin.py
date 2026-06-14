@@ -216,3 +216,38 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+def test_title_map_no_title_then_title() -> None:
+    """Check that registering without title then with title fills the title map."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="foo", page=page, primary=True)
+    plugin.register_anchor(identifier="foo", page=page, title="Foo Title", primary=True)
+    assert plugin.get_item_url("foo") == ("page.html#foo", "Foo Title")
+
+
+def test_title_map_no_overwrite() -> None:
+    """Check that a non-empty title is not overwritten by a subsequent different title."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="foo", page=page, title="Original", primary=True)
+    plugin.register_anchor(identifier="foo", page=page, title="Different", primary=True)
+    assert plugin.get_item_url("foo") == ("page.html#foo", "Original")
+
+
+def test_title_map_secondary_alias() -> None:
+    """Check that a secondary alias title can be looked up via URL."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="foo", page=page, anchor="bar", title="Bar Title", primary=False)
+    assert plugin.get_item_url("foo") == ("page.html#bar", "Bar Title")
+
+
+def test_duplicate_url_not_appended() -> None:
+    """Check that registering the same URL twice does not create duplicates."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="foo", page=page, primary=True)
+    plugin.register_anchor(identifier="foo", page=page, primary=True)
+    assert plugin._primary_url_map["foo"] == ["page.html#foo"]
