@@ -216,3 +216,50 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+def test_title_registration_no_title_then_title() -> None:
+    """Check that a title registered later for the same URL fills in when no prior title exists."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    # First registration: no title.
+    plugin.register_anchor(identifier="anchor", page=page, primary=True)
+    # Second registration: same URL, now with a title (e.g. from TOC).
+    plugin.register_anchor(identifier="anchor", page=page, title="The Heading", primary=True)
+
+    url, title = plugin.get_item_url("anchor")
+    assert url == "page.html#anchor"
+    assert title == "The Heading"
+
+
+def test_title_registration_no_overwrite() -> None:
+    """Check that a later different non-empty title does not overwrite the original title."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="anchor", page=page, title="First Title", primary=True)
+    plugin.register_anchor(identifier="anchor", page=page, title="Second Title", primary=True)
+
+    url, title = plugin.get_item_url("anchor")
+    assert url == "page.html#anchor"
+    assert title == "First Title"
+
+
+def test_secondary_alias_title_lookup() -> None:
+    """Check that a secondary alias with a title can be looked up by URL."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="alias", page=page, title="Alias Title", primary=False)
+
+    url, title = plugin.get_item_url("alias")
+    assert url == "page.html#alias"
+    assert title == "Alias Title"
+
+
+def test_duplicate_url_not_appended() -> None:
+    """Check that registering the same URL twice does not create duplicate entries."""
+    plugin = AutorefsPlugin()
+    page = create_page("page.html")
+    plugin.register_anchor(identifier="anchor", page=page, primary=True)
+    plugin.register_anchor(identifier="anchor", page=page, primary=True)
+
+    assert plugin._primary_url_map["anchor"] == ["page.html#anchor"]
