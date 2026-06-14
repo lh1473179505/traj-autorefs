@@ -279,6 +279,48 @@ def test_legacy_custom_optional_hover_reference() -> None:
 
 
 # YORE: Bump 2: Remove block.
+def test_legacy_optional_hover_html_escaped_identifier() -> None:
+    """Check that unresolved legacy optional-hover uses the decoded identifier in the fallback title."""
+    run_references_test(
+        url_map={},
+        source='<span data-autorefs-optional-hover="pkg.Foo&amp;Bar">text</span>',
+        output='<p><span title="pkg.Foo&Bar">text</span></p>',
+    )
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_optional_unresolved_returns_title_only() -> None:
+    """Check that unresolved legacy optional returns only the inner title text."""
+    run_references_test(
+        url_map={},
+        source='<span data-autorefs-optional="missing">visible</span>',
+        output='<p>visible</p>',
+    )
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_optional_hover_mapped() -> None:
+    """Check that mapped legacy optional-hover produces an <a> with title and deprecation warning."""
+    with pytest.warns(DeprecationWarning, match="`span` elements are deprecated"):
+        run_references_test(
+            url_map={"ok": "ok.html#ok"},
+            source='<span data-autorefs-optional-hover="ok">text</span>',
+            output='<p><a class="autorefs autorefs-internal" title="ok" href="ok.html#ok">text</a></p>',
+        )
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_required_unresolved_decoded_identifier_in_unmapped() -> None:
+    """Check that required unresolved legacy appends the decoded identifier to unmapped."""
+    run_references_test(
+        url_map={},
+        source='<span data-autorefs-identifier="pkg.Foo&amp;Bar">text</span>',
+        output="<p>[text][pkg.Foo&Bar]</p>",
+        unmapped=[("pkg.Foo&Bar", None)],
+    )
+
+
+# YORE: Bump 2: Remove block.
 def test_legacy_external_references() -> None:
     """Check that external references are marked as such."""
     with pytest.warns(DeprecationWarning, match="`span` elements are deprecated"):
