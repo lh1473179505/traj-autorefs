@@ -511,3 +511,58 @@ def test_title_append_identifier() -> None:
         source='<autoref optional identifier="fully.qualified.name">name</autoref>',
         output='<p><a class="autorefs autorefs-internal" title="Qualified Name (fully.qualified.name)" href="ok.html#fully.qualified.name">name</a></p>',
     )
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_unresolved_optional_hover_html_escaped() -> None:
+    """Check that unresolved legacy optional-hover uses decoded identifier in hover title."""
+    html = '<p><span data-autorefs-optional-hover="pkg.Foo&amp;Bar">Foo</span></p>'
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    output, unmapped = fix_refs(html, url_mapper)
+    assert output == '<p><span title="pkg.Foo&Bar">Foo</span></p>'
+    assert unmapped == []
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_unresolved_optional_returns_title() -> None:
+    """Check that unresolved legacy optional returns only the title."""
+    html = '<p><span data-autorefs-optional="pkg.Foo&amp;Bar">TheTitle</span></p>'
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    output, unmapped = fix_refs(html, url_mapper)
+    assert output == "<p>TheTitle</p>"
+    assert unmapped == []
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_mapped_optional_hover_produces_link_with_warning() -> None:
+    """Check that mapped legacy optional-hover still produces <a> with title and deprecation warning."""
+    html = '<p><span data-autorefs-optional-hover="ok">ok</span></p>'
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        if identifier == "ok":
+            return ("ok.html#ok", None)
+        raise KeyError(identifier)
+
+    with pytest.warns(DeprecationWarning, match="`span` elements are deprecated"):
+        output, unmapped = fix_refs(html, url_mapper)
+    assert '<a class="autorefs autorefs-internal" title="ok" href="ok.html#ok"' in output
+    assert ">ok</a>" in output
+    assert unmapped == []
+
+
+# YORE: Bump 2: Remove block.
+def test_legacy_required_unresolved_appends_decoded_identifier() -> None:
+    """Check that required unresolved legacy appends decoded identifier to unmapped."""
+    html = '<p><span data-autorefs-identifier="pkg.Foo&amp;Bar">Foo</span></p>'
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    output, unmapped = fix_refs(html, url_mapper)
+    assert unmapped == [("pkg.Foo&Bar", None)]

@@ -708,17 +708,19 @@ def _legacy_fix_ref(
         attrs = match["attrs"] or ""
         classes = (match["class"] or "").strip('"').split()
 
+        decoded_identifier = unescape(identifier)
+
         try:
-            url, _ = url_mapper(unescape(identifier))
+            url, _ = url_mapper(decoded_identifier)
         except KeyError:
             if kind == "autorefs-optional":
                 return title
             if kind == "autorefs-optional-hover":
-                return f'<span title="{identifier}">{title}</span>'
-            unmapped.append((identifier, None))
-            if title == identifier:
-                return f"[{identifier}][]"
-            return f"[{title}][{identifier}]"
+                return f'<span title="{decoded_identifier}">{title}</span>'
+            unmapped.append((decoded_identifier, None))
+            if title == decoded_identifier:
+                return f"[{decoded_identifier}][]"
+            return f"[{title}][{decoded_identifier}]"
 
         warnings.warn(
             "autorefs `span` elements are deprecated in favor of `autoref` elements: "
