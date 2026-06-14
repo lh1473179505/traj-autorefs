@@ -537,7 +537,7 @@ def fix_ref(
         if (
             record_backlink
             and (backlink_type := attrs.get("backlink-type"))
-            and (backlink_anchor := attrs.get("backlink-anchor"))
+            and (backlink_anchor := attrs.get("backlink-anchor")) is not None
         ):
             record_backlink(identifier, backlink_type, backlink_anchor)
 

@@ -9,8 +9,8 @@ import pytest
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.theme import Theme
 
-from mkdocs_autorefs import AutorefsConfig, AutorefsPlugin, fix_refs
-from tests.helpers import create_page
+from mkdocs_autorefs import AutorefsConfig, AutorefsPlugin, Backlink, BacklinkCrumb, fix_refs
+from tests.helpers import create_anchor_link, create_page
 
 
 def test_url_registration() -> None:
@@ -216,3 +216,49 @@ def test_explicit_strip_tags(strip_title_tags: bool) -> None:
     plugin.config.strip_title_tags = strip_title_tags
     plugin.on_config(config=MkDocsConfig())
     assert plugin._strip_title_tags is strip_title_tags
+
+
+def test_empty_backlink_anchor_uses_page_breadcrumb() -> None:
+    """Check that empty backlink_anchor stores page URL without trailing #."""
+    plugin = AutorefsPlugin()
+    plugin.record_backlinks = True
+    page = create_page("foo.html")
+    anchor = create_anchor_link("Foo", "foo")
+    plugin.register_anchor(page, anchor.id, title=anchor.title, primary=True)
+    plugin._register_breadcrumbs(page, anchor)
+    # Register a target identifier on another page.
+    plugin._primary_url_map["bar"] = ["bar.html#bar"]
+    # Record backlink with empty anchor — should point to page-level breadcrumb.
+    plugin._record_backlink("bar", "referenced-by", "", "foo.html")
+    assert plugin.get_backlinks("bar", from_url="") == {
+        "referenced-by": {Backlink(crumbs=(BacklinkCrumb(title="foo.html", url="foo.html#", parent=None),))},
+    }
+
+
+def test_nonempty_backlink_anchor_uses_heading_breadcrumb() -> None:
+    """Check that non-empty backlink_anchor still uses heading breadcrumb."""
+    plugin = AutorefsPlugin()
+    plugin.record_backlinks = True
+    page = create_page("foo.html")
+    anchor = create_anchor_link("Foo", "foo")
+    plugin.register_anchor(page, anchor.id, title=anchor.title, primary=True)
+    plugin._register_breadcrumbs(page, anchor)
+    plugin._primary_url_map["bar"] = ["bar.html#bar"]
+    plugin._record_backlink("bar", "referenced-by", "foo", "foo.html")
+    assert plugin.get_backlinks("bar", from_url="") == {
+        "referenced-by": {Backlink(crumbs=(BacklinkCrumb(title="Foo", url="foo.html#foo", parent=None),))},
+    }
+
+
+def test_external_identifier_no_backlink_recorded() -> None:
+    """Check that absolute external identifiers do not record backlinks."""
+    plugin = AutorefsPlugin()
+    plugin.record_backlinks = True
+    page = create_page("foo.html")
+    anchor = create_anchor_link("Foo", "foo")
+    plugin.register_anchor(page, anchor.id, title=anchor.title, primary=True)
+    plugin._register_breadcrumbs(page, anchor)
+    # Register an external URL — not in primary or secondary map.
+    plugin.register_url(identifier="ext", url="https://example.com/ext")
+    plugin._record_backlink("ext", "referenced-by", "foo", "foo.html")
+    assert plugin.get_backlinks("ext", from_url="") == {}

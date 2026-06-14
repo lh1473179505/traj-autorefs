@@ -375,7 +375,8 @@ class AutorefsPlugin(BasePlugin[AutorefsConfig]):
         # meaning it comes from an external source (typically an object inventory),
         # and we don't need to record backlinks for it.
         if identifier in self._primary_url_map or identifier in self._secondary_url_map:
-            self._backlinks[identifier][backlink_type].add(f"{page_url}#{backlink_anchor}")
+            backlink_url = f"{page_url}#{backlink_anchor}" if backlink_anchor else page_url
+            self._backlinks[identifier][backlink_type].add(backlink_url)
 
     def get_backlinks(self, *identifiers: str, from_url: str) -> dict[str, set[Backlink]]:
         """Return the backlinks to an identifier relative to the given URL.
