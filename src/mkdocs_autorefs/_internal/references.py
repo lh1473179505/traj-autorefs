@@ -534,15 +534,8 @@ def fix_ref(
 
         identifiers = (identifier, slug) if slug else (identifier,)
 
-        if (
-            record_backlink
-            and (backlink_type := attrs.get("backlink-type"))
-            and (backlink_anchor := attrs.get("backlink-anchor"))
-        ):
-            record_backlink(identifier, backlink_type, backlink_anchor)
-
         try:
-            url, original_title = _find_url(identifiers, url_mapper)
+            url, original_title, resolved_identifier = _find_url(identifiers, url_mapper)
         except KeyError:
             if optional:
                 _log.debug("Unresolved optional cross-reference: %s", identifier)
@@ -553,6 +546,13 @@ def fix_ref(
             if title == f"<code>{identifier}</code>" and not slug:
                 return f"[<code>{identifier}</code>][]"
             return f"[{title}][{identifier}]"
+
+        if (
+            record_backlink
+            and (backlink_type := attrs.get("backlink-type"))
+            and (backlink_anchor := attrs.get("backlink-anchor"))
+        ):
+            record_backlink(resolved_identifier, backlink_type, backlink_anchor)
 
         parsed = urlsplit(url)
         external = parsed.scheme or parsed.netloc
@@ -622,12 +622,14 @@ def fix_refs(
 def _find_url(
     identifiers: Iterable[str],
     url_mapper: Callable[[str], tuple[str, str | None]],
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, str]:
     for identifier in identifiers:
         try:
-            return url_mapper(identifier)
+            url, title = url_mapper(identifier)
         except KeyError:  # noqa: PERF203
             pass
+        else:
+            return url, title, identifier
     raise KeyError(f"None of the identifiers {identifiers} were found")
 
 

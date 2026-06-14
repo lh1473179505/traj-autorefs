@@ -511,3 +511,100 @@ def test_title_append_identifier() -> None:
         source='<autoref optional identifier="fully.qualified.name">name</autoref>',
         output='<p><a class="autorefs autorefs-internal" title="Qualified Name (fully.qualified.name)" href="ok.html#fully.qualified.name">name</a></p>',
     )
+
+
+def _run_backlink_test(
+    html: str,
+    url_map: Mapping[str, str],
+) -> list[tuple[str, str, str]]:
+    """Run fix_refs and return the list of recorded backlink calls (identifier, type, anchor)."""
+    recorded: list[tuple[str, str, str]] = []
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        if identifier not in url_map:
+            raise KeyError(identifier)
+        return url_map[identifier], None
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        recorded.append((identifier, backlink_type, backlink_anchor))
+
+    fix_refs(html, url_mapper, record_backlink=record_backlink)
+    return recorded
+
+
+def test_backlink_recorded_under_slug_resolved_target() -> None:
+    """Backlink is recorded under the resolved slug identifier, not the original identifier."""
+    html = (
+        '<autoref identifier="Missing Title" slug="real-target" '
+        'backlink-type="referenced-by" backlink-anchor="usage">Missing Title</autoref>'
+    )
+    recorded = _run_backlink_test(html, url_map={"real-target": "page.html#real-target"})
+    # Only one backlink recorded, under the slug-resolved target, not the original identifier.
+    assert recorded == [("real-target", "referenced-by", "usage")]
+
+
+def test_backlink_recorded_under_direct_identifier() -> None:
+    """When the direct identifier resolves, backlink is recorded under it."""
+    html = (
+        '<autoref identifier="Foo" backlink-type="referenced-by" backlink-anchor="anchor1">'
+        "Foo</autoref>"
+    )
+    recorded = _run_backlink_test(html, url_map={"Foo": "foo.html#Foo"})
+    assert recorded == [("Foo", "referenced-by", "anchor1")]
+
+
+def test_backlink_recorded_under_identifier_when_both_resolve() -> None:
+    """When both identifier and slug resolve, backlink is recorded under the identifier (first match)."""
+    html = (
+        '<autoref identifier="Foo" slug="foo-slug" '
+        'backlink-type="referenced-by" backlink-anchor="a">Foo</autoref>'
+    )
+    recorded = _run_backlink_test(
+        html,
+        url_map={"Foo": "foo.html#Foo", "foo-slug": "slug.html#foo-slug"},
+    )
+    # The first identifier to resolve wins (the explicit identifier).
+    assert recorded == [("Foo", "referenced-by", "a")]
+
+
+def test_unmapped_keeps_original_identifier_when_all_fail() -> None:
+    """Unmapped warning retains the original identifier when all candidates fail to resolve."""
+    html = (
+        '<autoref identifier="Missing Title" slug="missing-slug" '
+        'backlink-type="referenced-by" backlink-anchor="a">Missing Title</autoref>'
+    )
+    recorded: list[tuple[str, str, str]] = []
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        recorded.append((identifier, backlink_type, backlink_anchor))
+
+    _, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink)
+
+    # Unmapped retains the original identifier (not the slug candidate).
+    assert unmapped == [("Missing Title", None)]
+    # No backlink was recorded since resolution failed.
+    assert recorded == []
+
+
+def test_optional_unresolved_does_not_record_backlink() -> None:
+    """Optional unresolved references do not record a backlink."""
+    html = (
+        '<autoref optional identifier="Missing Title" slug="missing-slug" '
+        'backlink-type="referenced-by" backlink-anchor="a">Missing Title</autoref>'
+    )
+    recorded: list[tuple[str, str, str]] = []
+
+    def url_mapper(identifier: str) -> tuple[str, str | None]:
+        raise KeyError(identifier)
+
+    def record_backlink(identifier: str, backlink_type: str, backlink_anchor: str) -> None:
+        recorded.append((identifier, backlink_type, backlink_anchor))
+
+    _, unmapped = fix_refs(html, url_mapper, record_backlink=record_backlink)
+
+    # Optional unresolved: no unmapped entry, no backlink recorded.
+    assert unmapped == []
+    assert recorded == []
